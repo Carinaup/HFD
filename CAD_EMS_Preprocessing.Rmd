@@ -1,0 +1,116 @@
+---
+title: "CAD Processing"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries and Data Import
+```{r}
+library(dplyr)
+library(ggplot2)
+
+ems <- read.csv("EMSData_RiceUniversity_20170501_20190930.csv")
+fire <- read.csv("FireData_RiceUniversity_20180701_20190930.csv")
+```
+
+# Mode function
+```{r}
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+```
+
+# EMS Processing
+## Remove non-standard event numbers
+```{r}
+# Remove all rows with event numbers that are not 10 digit numbers
+ems_new <- filter(ems, nchar(as.character(Dim_Incident_One_To_One___Response_Incident_Number))==10)
+ems_new <- filter(ems_new, !is.na(as.numeric(as.character(Dim_Incident_One_To_One___Response_Incident_Number))))
+
+# What portion of data was removed?
+(nrow(ems) - nrow(ems_new))/nrow(ems)
+#.45 percent
+```
+
+## Impute null dispatch notified times
+```{r}
+# Set dispatch notified times equal to other rows with same incident number
+
+# count nulls before imputation
+null_before <- nrow(filter(ems_new, Dim_Incident___Incident_Dispatch_Notified_Date_Time=="NULL"))
+
+# find incident numbers associated with null values in dispatch notified time column
+ems_dispatchtime_nulls <- filter(ems_new, Dim_Incident___Incident_Dispatch_Notified_Date_Time=="NULL")
+
+# set aside all rows from original data where incident numbers not associated with any null values
+ems_split1 <- filter(ems_new, !(ems_new$Dim_Incident_One_To_One___Response_Incident_Number %in% ems_dispatchtime_nulls$Dim_Incident_One_To_One___Response_Incident_Number))
+
+# subset with incident numbers associate with null values -- use for imputation
+ems_split2 <-  filter(ems_new, ems_new$Dim_Incident_One_To_One___Response_Incident_Number %in% ems_dispatchtime_nulls$Dim_Incident_One_To_One___Response_Incident_Number)
+
+# for every null value in dispatch notified time, impute mode time value from other rows with same incident number
+for(row in 1:nrow(ems_split2)){
+  if(ems_split2$Dim_Incident___Incident_Dispatch_Notified_Date_Time[row]=="NULL"){
+    ems_split2$Dim_Incident___Incident_Dispatch_Notified_Date_Time[row]<-getmode(ems_split2$Dim_Incident___Incident_Dispatch_Notified_Date_Time[ems_split2$Dim_Incident_One_To_One___Response_Incident_Number==ems_split2$Dim_Incident_One_To_One___Response_Incident_Number[row] & ems_split2$Dim_Incident___Incident_Dispatch_Notified_Date_Time != "NULL"])
+  }
+}
+
+# rejoin
+ems_new2 <- rbind(ems_split1, ems_split2)
+
+# count nulls after imputation and look at number of rows affected
+null_after <- nrow(filter(ems_new2, is.na(Dim_Incident___Incident_Dispatch_Notified_Date_Time)))
+# What portion of data was affected?
+(null_before - null_after)/nrow(ems_new2)
+# .24 percent
+
+# sort
+ems_new2 <- ems_new2[order(ems_new2$Dim_Incident_One_To_One___Response_Incident_Number),]
+```
+
+## Impute null CAD dispatch codes
+```{r}
+# count nulls before dispatch code imputation
+null_before_code <- nrow(filter(ems_new2, Dim_Incident___Incident_Initial_CAD_Dispatch_Code == "NULL"))
+
+# find incident numbers associated with null values in dispatch code column
+ems_dispatchcode_nulls <- filter(ems_new2, Dim_Incident___Incident_Initial_CAD_Dispatch_Code == "NULL")
+
+# set aside all rows from original data where incident numbers not associated with any null values
+ems_codesplit1 <- filter(ems_new2, !(ems_new2$Dim_Incident_One_To_One___Response_Incident_Number %in% ems_dispatchcode_nulls$Dim_Incident_One_To_One___Response_Incident_Number))
+
+# subset with incident numbers associate with null values -- use for imputation
+ems_codesplit2 <-  filter(ems_new2, ems_new2$Dim_Incident_One_To_One___Response_Incident_Number %in% ems_dispatchcode_nulls$Dim_Incident_One_To_One___Response_Incident_Number)
+
+# for every null value in dispatch code, impute mode value from other rows where BOTH incident number and unit notified time are the same
+for(row in 1:nrow(ems_codesplit2)){
+  if(ems_codesplit2$Dim_Incident___Incident_Initial_CAD_Dispatch_Code[row]=="NULL"){
+    ems_codesplit2$Dim_Incident___Incident_Initial_CAD_Dispatch_Code[row]<-getmode(ems_codesplit2$Dim_Incident___Incident_Initial_CAD_Dispatch_Code[ems_codesplit2$Dim_Incident_One_To_One___Response_Incident_Number==ems_codesplit2$Dim_Incident_One_To_One___Response_Incident_Number[row] & ems_codesplit2$Dim_Incident___Incident_Unit_Notified_By_Dispatch_Date_Time==ems_codesplit2$Dim_Incident___Incident_Unit_Notified_By_Dispatch_Date_Time[row] & ems_codesplit2$Dim_Incident___Incident_Initial_CAD_Dispatch_Code != "NULL"])
+  }
+}
+
+# rejoin
+ems_new3 <- rbind(ems_codesplit1, ems_codesplit2)
+
+# count nulls after imputation and look at number of rows affected
+null_after_code <- nrow(filter(ems_new3, is.na(Dim_Incident___Incident_Initial_CAD_Dispatch_Code)))
+
+# What portion of data was affected?
+(null_before_code - null_after_code)/nrow(ems_new3)
+# .434 percent
+
+# sort
+ems_new3 <- ems_new3[order(ems_new3$Dim_Incident_One_To_One___Response_Incident_Number),]
+```
+
+## Trim dispatch code
+```{r}
+# create field for first 4 characters of type code
+ems_new3$Code4 <- substr(ems_new3$Dim_Incident___Incident_Initial_CAD_Dispatch_Code, 1, 4)
+write.csv(ems_new3, "ems_imputed.csv", row.names = FALSE)
+```
+
