@@ -42,19 +42,21 @@ duOnScene_l = ggplot(im_ems, aes(du_onScene)) + geom_density(alpha =0.8) +
               fill = " No of Cylinders")
 duOnScene_l
 
+# find minimum density toward zero to use as threshold for "sufficiently short on-scene duration"
+test_vec <- im_ems$du_onScene[im_ems$du_onScene >= 0 & im_ems$du_onScene <= 2000]
+test_vec <- na.omit(test_vec)
+den_y <- density(test_vec)$y
+den_x <- density(test_vec)$x
+min_den_y <- min(den_y[den_x > 20 & den_x < 500])
+min_x <- den_x[which(den_y == min_den_y)]
+min_x
+duOnScene_l + geom_vline(xintercept = min_x, lwd = 2, color="red")
+
 duOnScene_s = ggplot(im_ems, aes(du_onScene)) + geom_density(alpha =0.8) +
   xlim(0,1300)+
   labs(title ="Histogram with Normal Curve",x="Duration of OnScene",y="Density",
        fill = " No of Cylinders")
 duOnScene_s
-
-## Find the first local minimum as the threshold
-# x = im_ems$du_onScene
-# x = na.omit(x)
-# y = density(x)$y
-# x = density(x)$x
-# MinDensity <- min(y[x > 20 & x < 1200])
-# x[which(y == MinDensity)]
 
 ## Choose the duration around 0 as overdispatch
 im_ems$du_onScene[which(density(im_ems$du_onScene[which(im_ems$du_onScene > 20 & im_ems$du_onScene < 250)])) == 
