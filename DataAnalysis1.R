@@ -38,7 +38,9 @@ head(ST)
 summary(ST$Total) ## So differnt stations have different level of workload, and the range is very large
 
 ST_Num = ggplot(ST, aes(x=ST, y=Total)) +
-         geom_point()
+         geom_point() +
+         labs(title = "Number of Events for each Station", 
+         x="Station", y="Number of Events")
 ST_Num
 ## Omit the station of 300
 ST_Num = ggplot(ST, aes(x=ST, y=Total)) +
@@ -75,7 +77,7 @@ lines(xfit, yfit, col="red", lwd=2)
 
 du_dens_large = ggplot(cad, aes(Duration)) + geom_density(alpha =0.8) +
   xlim(0,3000) +
-  labs(title ="Histogram with Normal Curve",x="Duration",y="Density",fill = " No of Cylinders")
+  labs(title ="Density of Duration",x="Duration",y="Density",fill = " No of Cylinders")
 du_dens_large
 
 du_dens_small = ggplot(cad, aes(Duration)) + geom_density(alpha =0.8) +
@@ -89,11 +91,12 @@ du_dens_small
 ### plot the Duration by Year/ Month/ Day
 Du_year = ggplot(cad, aes(Duration)) + geom_density(aes(fill=factor(Year)), alpha =0.3) +
   xlim(0,1000) +
-  labs(title ="Duration Density plot",x="Duration",y="Density",fill = " No of Cylinders")
+  labs(title ="Duration Density by Year",x="Duration",y="Density",fill = "Year")
 Du_year
 
 cad$Year = as.character(cad$Year)
 Du_year_box = ggplot(cad, aes(x=Year, y=Duration)) +
+              labs(title ="Duration by Year Box Plot",x="Year",y="Duration") +
               geom_boxplot()
 Du_year_box ## threshold
 ## The distribution of duration almost didn't change in the past five years
@@ -101,12 +104,13 @@ Du_year_box ## threshold
 
 Du_month = ggplot(cad, aes(Duration)) + geom_density(aes(fill=factor(Month)), alpha =0.3) +
   xlim(0,1000) +
-  labs(title ="Duration Density plot",x="Duration",y="Density",fill = " No of Cylinders")
+  labs(title ="Duration Density by Month",x="Duration",y="Density",fill = "Month")
 Du_month
 
 ## The distribution of duration almost didn't change a lot in different months
 
 Du_month_box = ggplot(cad, aes(x=Month, y=Du)) +
+               labs(title ="Duration by Month Box Plot",x="Year",y="Duration") +
                geom_boxplot()
 Du_month_box
 
