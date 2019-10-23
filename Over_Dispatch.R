@@ -28,14 +28,8 @@ ori_n - new_n ## Delete 82627 rows
 
 ########################## Detect Over-Dispatch of Units #############################
 im_ems$over_dis = 0
-#### 1.Only En_route time, no On_Scene time
-im_ems$over_dis[which(im_ems$Dim_Incident___Incident_Unit_En_Route_Date_Time != "NULL" &
-                im_ems$Dim_Incident___Incident_Unit_Arrived_On_Scene_Date_Time == "NULL")] = 1
-length(which(im_ems$over_dis == 1))
-N = length(im_ems$row);N
-over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## 0.1071424 of dispatches are over-dispatch
 
-#### 2. Short OnScene duration
+#### 1. Short OnScene duration
 im_ems$du_onScene = difftime(strptime(im_ems$Dim_Incident___Incident_Unit_Left_Scene_Date_Time, format="%Y-%m-%d %H:%M:%OS"), 
                              strptime(im_ems$Dim_Incident___Incident_Unit_Arrived_On_Scene_Date_Time, format="%Y-%m-%d %H:%M:%OS"), 
                              units='secs')
@@ -49,16 +43,9 @@ im_ems_du_nona[which(im_ems_du_nona$du_onScene == min(im_ems_du_nona$du_onScene)
 length(im_ems_du_nona[which(im_ems_du_nona$du_onScene <0),1]) ## there're 104 were removed
 im_ems_du = im_ems_du_nona[-which(im_ems_du_nona$du_onScene <0),]
 duOnScene_l = ggplot(im_ems_du, aes(du_onScene)) + geom_density(alpha =0.8) +
-              xlim(0,2000)+
-              labs(title ="Density of Duration for OnScene",x="Duration",y="Density",
-              fill = " No of Cylinders")
+  xlim(0,2000)+
+  labs(title ="Density of Duration for OnScene",x="Duration",y="Density")
 duOnScene_l
-
-#duOnScene_s = ggplot(im_ems, aes(du_onScene)) + geom_density(alpha =0.8) +
-#  xlim(0,1300)+
-#  labs(title ="Histogram with Normal Curve",x="Duration of OnScene",y="Density",
-#       fill = " No of Cylinders")
-#duOnScene_s
 
 ## Find the first local minimum as the threshold
 test_vec <- im_ems$du_onScene[im_ems$du_onScene >= 0 & im_ems$du_onScene <= 2000]
@@ -70,13 +57,26 @@ min_x <- den_x[which(den_y == min_den_y)]
 min_x
 duOnScene_l + geom_vline(xintercept = min_x, lwd = 2, color="red")
 
-## Choose the duration of 85.3491 as overdispatch
+## Question: why negatice duration, 104 rows
+
+## Choose the duration of 85.3491 as threshold
 im_ems$over_dis[which(im_ems$du_onScene <= min_x & im_ems$du_onScene >= 0)] = 1
-over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## over-dispatch increases from 0.1071424to 0.1516478
+N = length(im_ems$row);N
+over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## 0.0445054 of over-dispatching
+
+#### 2.Only En_route time, no On_Scene time
+im_ems$over_dis[which(im_ems$Dim_Incident___Incident_Unit_En_Route_Date_Time != "NULL" &
+                im_ems$Dim_Incident___Incident_Unit_Arrived_On_Scene_Date_Time == "NULL")] = 1
+length(which(im_ems$over_dis == 1))
+over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## over-dispatch increases from 0.0445054 to 0.1516478
 
 #### 3. Asign the column of canceled time which is not NULL as over-dispatching
 im_ems$over_dis[which(im_ems$Dim_Incident___Incident_Unit_Canceled_Date_Time != "NULL")] = 1
 over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## over-dispatch increases from 0.1516478 to 0.2312898
+head(im_ems)
+# dbWriteTable(conn = dcon, name = "im_ems", value = im_ems,
+#             row.names = FALSE, header = FALSE)
+# write.csv(im_ems,file="im_ems.csv")
 ########################## Detect Over-Dispatch of Events #############################
 head(im_ems)
 over_event = sqldf("SELECT code4, Dim_Incident_One_To_One___Response_Incident_Number as EventNum, 
