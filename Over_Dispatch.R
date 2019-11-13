@@ -24,31 +24,48 @@ head(im_ems)
 ## Get rid of the FF code 
 im_ems <- filter(im_ems, substr(code4, 1, 2) == "FE")
 new_n = length(im_ems$row);new_n
-ori_n - new_n ## Delete 82627 rows
+ori_n - new_n ## Deleted 82627 rows
 
-########################## Detect Over-Dispatch of Units #############################
+############################### Detect Over-Dispatch of Units ######################################
+## Initialize the over-dispatch as 0
 im_ems$over_dis = 0
 
+## For each incident, omit the earliest unit, the first unit, because it cannot be an over-dispatch
+uni_first = im_ems%>%
+  group_by(Dim_Incident_One_To_One___Response_Incident_Number)%>%
+  summarise(Min=min(Dim_Incident___Incident_Unit_Arrived_On_Scene_Date_Time))
+
+im_ems = left_join(im_ems, uni_first, by = "Dim_Incident_One_To_One___Response_Incident_Number")
+
+unit_nofirst = sqldf("SELECT * 
+                     FROM im_ems
+                     WHERE Dim_Incident___Incident_Unit_Arrived_On_Scene_Date_Time > Min")
+
+length(unit_nofirst$row)
+head(im_ems)
+
+## Do the following analysis for unit_nofirst
 #### 1. Short OnScene duration
-im_ems$du_onScene = difftime(strptime(im_ems$Dim_Incident___Incident_Unit_Left_Scene_Date_Time, format="%Y-%m-%d %H:%M:%OS"), 
-                             strptime(im_ems$Dim_Incident___Incident_Unit_Arrived_On_Scene_Date_Time, format="%Y-%m-%d %H:%M:%OS"), 
-                             units='secs')
-im_ems$du_onScene = as.numeric(im_ems$du_onScene)
+unit_nofirst$du_onScene = difftime(strptime(unit_nofirst$Dim_Incident___Incident_Unit_Left_Scene_Date_Time, format="%Y-%m-%d %H:%M:%OS"), 
+                                   strptime(unit_nofirst$Dim_Incident___Incident_Unit_Arrived_On_Scene_Date_Time, format="%Y-%m-%d %H:%M:%OS"), 
+                                   units='secs')
+unit_nofirst$du_onScene = as.numeric(unit_nofirst$du_onScene)
 # write.csv(im_ems$du_onScene,file="du_onScene.csv")
-summary(im_ems$du_onScene) ## Question: why there's negative number...
-im_ems_du_nona = im_ems[-which(is.na(im_ems$du_onScene)),] ## remove Na's, 131447 of Na's
-summary(im_ems_du_nona$du_onScene) 
-im_ems_du_nona[which(im_ems_du_nona$du_onScene == min(im_ems_du_nona$du_onScene)),]
-## After looking at the rows with negative duration, the left_secene column is very weirred, so remove them
-length(im_ems_du_nona[which(im_ems_du_nona$du_onScene <0),1]) ## there're 104 were removed
-im_ems_du = im_ems_du_nona[-which(im_ems_du_nona$du_onScene <0),]
-duOnScene_l = ggplot(im_ems_du, aes(du_onScene)) + geom_density(alpha =0.8) +
+summary(unit_nofirst$du_onScene)
+nofirst_du_nona = unit_nofirst[-which(is.na(unit_nofirst$du_onScene)),] ## remove Na's, 119936 of Na's
+summary(nofirst_du_nona$du_onScene) 
+nofirst_du_nona[which(nofirst_du_nona$du_onScene == min(nofirst_du_nona$du_onScene)),]
+#### After looking at the rows with negative duration, the left_secene column is very weirred, so remove them
+
+length(nofirst_du_nona[which(nofirst_du_nona$du_onScene <0),1]) ## there're 32 were removed
+nofirst_du = nofirst_du_nona[-which(nofirst_du_nona$du_onScene <0),]
+duOnScene_l = ggplot(nofirst_du, aes(du_onScene)) + geom_density(alpha =0.8) +
   xlim(0,2000)+
   labs(title ="Density of Duration for OnScene",x="Duration",y="Density")
 duOnScene_l
 
 ## Find the first local minimum as the threshold
-test_vec <- im_ems$du_onScene[im_ems$du_onScene >= 0 & im_ems$du_onScene <= 2000]
+test_vec <- nofirst_du$du_onScene[nofirst_du$du_onScene >= 0 & nofirst_du$du_onScene <= 2000]
 test_vec <- na.omit(test_vec)
 den_y <- density(test_vec)$y
 den_x <- density(test_vec)$x
@@ -57,22 +74,27 @@ min_x <- den_x[which(den_y == min_den_y)]
 min_x
 duOnScene_l + geom_vline(xintercept = min_x, lwd = 2, color="red")
 
-## Question: why negatice duration, 104 rows
+## Choose the duration of 107.1393 as threshold
+head(im_ems)
+id_over = nofirst_du$row[which(nofirst_du$du_onScene <= min_x & nofirst_du$du_onScene >= 0)]
+head(id_over)
 
-## Choose the duration of 85.3491 as threshold
-im_ems$over_dis[which(im_ems$du_onScene <= min_x & im_ems$du_onScene >= 0)] = 1
+for (i in id_over){
+  im_ems$over_dis[which(im_ems$row==i)] = 1
+}
+
 N = length(im_ems$row);N
-over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## 0.0445054 of over-dispatching
+over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## 0.02364858 of over-dispatching
 
 #### 2.Only En_route time, no On_Scene time
 im_ems$over_dis[which(im_ems$Dim_Incident___Incident_Unit_En_Route_Date_Time != "NULL" &
                 im_ems$Dim_Incident___Incident_Unit_Arrived_On_Scene_Date_Time == "NULL")] = 1
 length(which(im_ems$over_dis == 1))
-over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## over-dispatch increases from 0.0445054 to 0.1516478
+over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## over-dispatch increases from 0.02364858 to 0.130791
 
 #### 3. Asign the column of canceled time which is not NULL as over-dispatching
 im_ems$over_dis[which(im_ems$Dim_Incident___Incident_Unit_Canceled_Date_Time != "NULL")] = 1
-over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## over-dispatch increases from 0.1516478 to 0.2312898
+over_percent = length(which(im_ems$over_dis == 1)) / N ; over_percent ## over-dispatch increases from 0.130791 to 0.2189485
 head(im_ems)
 # dbWriteTable(conn = dcon, name = "im_ems", value = im_ems,
 #             row.names = FALSE, header = FALSE)
@@ -88,8 +110,10 @@ head(over_event)
 over_event$over_event[which(over_event$over_event >= 1)] = 1
 N_event = length(over_event$over_event)
 over_event_per = length(which(over_event$over_event == 1)) / N_event ; over_event_per 
-# the percentage of over-dispatched evnets is 0.3137325
-
+# the percentage of over-dispatched evnets is 0.2964025
+# write.csv(over_event,file="over_event.csv")
+# dbWriteTable(conn = dcon, name = "over_event", value = over_event,
+#              row.names = FALSE, header = TRUE)
 ########################## Analysis Over-dispatching by EventType #############################
 ## EventType that contribute most to the total Over-dispatching
 over_type = sqldf("SELECT code4, COUNT(EventNum) as count, SUM(over_event) as countOver
@@ -128,3 +152,43 @@ top_type5 = ggplot(top_type, aes(x=code4,y=percent)) +
             theme(title=element_text(size=8))
 top_type5
 
+### with logitude, latitude and the first time stamp
+res <- dbSendQuery(conn = dcon, "
+                   SELECT *
+                   FROM cad_loc;
+                   ")
+cad <- dbFetch(res, -1)
+dbClearResult(res)
+head(cad)
+cad = sqldf("SELECT EventNum, Longitude, Latitude
+            FROM cad
+            ;")
+head(cad)
+
+res <- dbSendQuery(conn = dcon, "
+                   SELECT *
+                   FROM over_event;
+                   ")
+over_event <- dbFetch(res, -1)
+dbClearResult(res)
+head(over_event)
+
+over_event = left_join(over_event, cad, by = "EventNum")
+head(over_event)
+
+res <- dbSendQuery(conn = dcon, "
+                   SELECT *
+                   FROM EMS_imputed;
+                   ")
+ems <- dbFetch(res, -1)
+dbClearResult(res)
+head(ems)
+NotiTime = ems%>%
+  group_by(Dim_Incident_One_To_One___Response_Incident_Number)%>%
+  summarise(Min=min(Dim_Incident___Incident_Dispatch_Notified_Date_Time))
+head(NotiTime)
+names(NotiTime) = c('EventNum', 'NotiTime')
+over_event = left_join(over_event, NotiTime, by = "EventNum")
+head(over_event)
+view(over_event)
+# write.csv(over_event,file="over_event.csv")
