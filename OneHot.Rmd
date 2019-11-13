@@ -1,0 +1,69 @@
+---
+title: "OneHot"
+author: "Phillip Jaffe"
+date: "11/4/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Import
+```{r}
+setwd("~/Documents/Rice/Current/STAT 435/Feature Engineering")
+im_ems <- read.csv("over_event.csv")
+
+im_ems$Latitude <- as.numeric(substr(im_ems$Latitude, 2, 9))*10^(-6)
+im_ems$Longitude <- as.numeric(substr(im_ems$Longitude, 2, 10))*10^(-6)
+write.csv(im_ems, file="over_event.csv")
+
+library(caret)
+```
+
+## Time of Day
+```{r}
+# create variable for hour of the day
+im_ems$Hour <- substr(as.character(im_ems$NotiTime), 12, 13)
+
+# create variable for day of week
+im_ems$Day <- weekdays(as.Date(substr(as.character(im_ems$NotiTime), 1, 10)))
+
+# create variable for month
+im_ems$Month <- months(as.Date(substr(as.character(im_ems$NotiTime), 1, 10)))
+
+# one-hot encode
+onehot <- dummyVars( ~ Hour + Day + Month + code4, data=im_ems)
+im_ems_new <- data.frame(predict(onehot, newdata=im_ems))
+
+onehot_time_code <- im_ems_new
+# rejoin overdispatch flag
+onehot_time_code$over_dispatch <- im_ems$over_event
+
+write.csv(onehot_time_code, file="onehot_time_code.csv")
+```
+
+## Data Import
+```{r}
+data <- read.csv("onehot_time_code.csv")
+```
+
+## Correlation Coefficients
+```{r}
+for (i in 2:(ncol(data)-1)){
+  idxs <- which(!(is.na(data[,i])))
+  print(colnames(data)[i])
+  print(cor(data[,i][idxs], data[,ncol(data)][idxs]), na.rm=TRUE)
+}
+```
+
+## PCA
+```{r}
+library(ggplot2)
+library(ggfortify)
+
+data_pca <- na.omit(data)
+data_pca$over_dispatch <- as.factor(data_pca$over_dispatch)
+df <- data_pca[3:ncol(data_pca)-1]
+autoplot(prcomp(df), data=data_pca, colour="over_dispatch")
+```
